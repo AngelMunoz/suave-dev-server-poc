@@ -16,6 +16,16 @@ open ICSharpCode.SharpZipLib.Tar
 open ICSharpCode.SharpZipLib.GZip
 open CliWrap
 
+let isWindows =
+    RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+
+let fableCmd () =
+    Cli
+        .Wrap(if isWindows then "dotnet.exe" else "")
+        .WithArguments("fable src/App.fsproj -o ./public -e .fs.js")
+        .WithStandardErrorPipe(PipeTarget.ToStream(Console.OpenStandardError()))
+        .WithStandardOutputPipe(PipeTarget.ToStream(Console.OpenStandardOutput()))
+
 let tryGetEntrypoint () =
     let context =
         BrowsingContext.New(Configuration.Default)
@@ -65,7 +75,7 @@ let tgzDownloadPath =
     Path.Combine("./", ".suavedevserver", "esbuild.tgz")
 
 let esbuildExec =
-    Path.Combine("./", ".suavedevserver", "package", "esbuild.exe")
+    Path.Combine("./", ".suavedevserver", "package", $"""esbuild{if isWindows then ".exe" else ""}""")
 
 let tryDownloadEsBuild () : Task<string option> =
     let binString = $"esbuild-{platformString}-{archString}"
@@ -121,7 +131,7 @@ let setupEsbuild () =
     |> Async.AwaitTask
 
 
-let cmd (entryPoint: string) =
+let esbuildCmd (entryPoint: string) =
     Cli
         .Wrap(esbuildExec)
         .WithStandardErrorPipe(PipeTarget.ToStream(Console.OpenStandardError()))
@@ -130,6 +140,11 @@ let cmd (entryPoint: string) =
 
 let execBuild () =
     task {
+        let cmdResult = fableCmd().ExecuteAsync()
+        printfn $"Starting Fable with pid: [{cmdResult.ProcessId}]"
+
+        let! _ = cmdResult.Task
+
         if not <| File.Exists(esbuildExec) then
             do! setupEsbuild ()
 
@@ -142,11 +157,11 @@ let execBuild () =
 
         match tryGetEntrypoint () with
         | Some entrypoint ->
-            let cmd = cmd(entrypoint).ExecuteAsync()
+            let cmd = esbuildCmd(entrypoint).ExecuteAsync()
             printfn $"Starting esbuild with pid: [{cmd.ProcessId}]"
 
-            let! result = cmd.Task
-            printfn $"Finished esbuild - {result.RunTime}"
+            let! _ = cmd.Task
+            ()
         | None -> printfn "No Entrypoint found in index.html"
 
         let opts = EnumerationOptions()
