@@ -448,4 +448,7 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 
 .compressed
-/public/**/*.js
+/public/**/*.fs.js
+
+.suavedevserver
+dist
