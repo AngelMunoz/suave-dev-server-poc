@@ -121,12 +121,21 @@ let app =
              RequestErrors.NOT_FOUND "Not Found"
              >=> redirect "/" ]
 
-let config =
+let config (publicPath: string option) =
+    let path =
+        Path.GetFullPath(
+            match publicPath with
+            | Some "built" -> "./dist"
+            | _ -> "./public"
+        )
+
+    printfn $"Serving content from {path}"
+
     { defaultConfig with
           bindings = [ HttpBinding.createSimple HTTP "0.0.0.0" 3000 ]
-          homeFolder = Some(Path.GetFullPath "./public")
+          homeFolder = Some path
           compressedFilesFolder = Some(Path.GetFullPath "./.compressed") }
 
 stdinAsyncSeq () |> Async.Start
-
-startWebServer config app
+// dotnet fsi suave.fsx built to show how bundled files work
+startWebServer (config (fsi.CommandLineArgs |> Array.tryLast)) app

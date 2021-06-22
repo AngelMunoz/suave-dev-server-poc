@@ -4,6 +4,9 @@ open Sutil
 open Sutil.DOM
 open Sutil.Attr
 open Fable.Core.JsInterop
+open Sutil.Styling
+
+open type Feliz.length
 
 let Hello (name: string) : string = importMember "../public/ext.js"
 
@@ -26,3 +29,9 @@ let view () =
       ]
     ]
   ]
+  |> withStyle [
+       rule
+         "label"
+         [ Css.fontSize (em 1.5)
+           Css.color "rebeccapurple" ]
+     ]

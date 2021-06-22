@@ -26,7 +26,7 @@ let fableCmd () =
         .WithStandardErrorPipe(PipeTarget.ToStream(Console.OpenStandardError()))
         .WithStandardOutputPipe(PipeTarget.ToStream(Console.OpenStandardOutput()))
 
-let tryGetEntrypoint () =
+let tryGetEntrypointJs () =
     let context =
         BrowsingContext.New(Configuration.Default)
 
@@ -49,6 +49,29 @@ let tryGetEntrypoint () =
         let combined = Path.Combine("./", "public", src)
         Some(Path.GetFullPath combined)
     | None -> None
+
+let getEntrypointsCss () =
+    let context =
+        BrowsingContext.New(Configuration.Default)
+
+    let content = File.ReadAllText("./public/index.html")
+    let parser = context.GetService<IHtmlParser>()
+    let doc = parser.ParseDocument content
+
+    let els =
+        doc.QuerySelectorAll("[data-entry-point][rel=stylesheet]")
+
+    els
+    |> Seq.map
+        (fun el ->
+            let src =
+                match el.Attributes
+                      |> Seq.tryFind (fun item -> item.Name = "href") with
+                | Some src -> src.Value
+                | None -> ""
+
+            let combined = Path.Combine("./", "public", src)
+            Path.GetFullPath combined)
 
 
 let platformString =
@@ -131,12 +154,19 @@ let setupEsbuild () =
     |> Async.AwaitTask
 
 
-let esbuildCmd (entryPoint: string) =
+let esbuildJsCmd (entryPoint: string) =
     Cli
         .Wrap(esbuildExec)
         .WithStandardErrorPipe(PipeTarget.ToStream(Console.OpenStandardError()))
         .WithStandardOutputPipe(PipeTarget.ToStream(Console.OpenStandardOutput()))
         .WithArguments($"{entryPoint} --bundle --minify --target=es2015 --format=esm --outdir=./dist")
+
+let esbuildCssCmd (entryPoint: string) =
+    Cli
+        .Wrap(esbuildExec)
+        .WithStandardErrorPipe(PipeTarget.ToStream(Console.OpenStandardError()))
+        .WithStandardOutputPipe(PipeTarget.ToStream(Console.OpenStandardOutput()))
+        .WithArguments($"{entryPoint} --bundle --minify --outdir=./dist")
 
 let execBuild () =
     task {
@@ -155,14 +185,29 @@ let execBuild () =
 
         Directory.CreateDirectory("./dist") |> ignore
 
-        match tryGetEntrypoint () with
+        match tryGetEntrypointJs () with
         | Some entrypoint ->
-            let cmd = esbuildCmd(entrypoint).ExecuteAsync()
+            let cmd = esbuildJsCmd(entrypoint).ExecuteAsync()
             printfn $"Starting esbuild with pid: [{cmd.ProcessId}]"
 
             let! _ = cmd.Task
             ()
-        | None -> printfn "No Entrypoint found in index.html"
+        | None -> printfn "No Entrypoint for JS found in index.html"
+
+        let cssFiles = getEntrypointsCss ()
+
+        if cssFiles |> Seq.length > 0 then
+            let entrypoints = String.Join(' ', cssFiles)
+
+            let cmd =
+                esbuildCssCmd(entrypoints).ExecuteAsync()
+
+            printfn $"Starting esbuild with pid: [{cmd.ProcessId}]"
+
+            let! _ = cmd.Task
+            ()
+        else
+            printfn "No Entrypoints for CSS found in index.html"
 
         let opts = EnumerationOptions()
         opts.RecurseSubdirectories <- true
@@ -171,7 +216,8 @@ let execBuild () =
         |> Seq.filter
             (fun file ->
                 not <| file.Contains(".fable")
-                && not <| file.Contains(".js"))
+                && not <| file.Contains(".js")
+                && not <| file.Contains(".css"))
         |> Seq.iter (fun path -> File.Copy(path, $"./dist/{Path.GetFileName(path)}"))
     }
 
